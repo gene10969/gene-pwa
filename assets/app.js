@@ -211,6 +211,75 @@ window.deleteItem=function(c,id){if(!confirm("削除しますか？"))return;sta
 window.deletePatient=function(no){if(!confirm("患者を削除しますか？売上履歴は残ります。"))return;state.patients=state.patients.filter(p=>String(p.no)!==String(no));saveState();renderAll()}
 window.deleteMenu=function(name){if(!confirm("メニューを削除しますか？"))return;state.menus=state.menus.filter(m=>m.name!==name);saveState();renderAll()}
 function renderAll(){refreshDatalists();refreshMenuSelect();refreshHistorySelect();renderSales();renderPatients();renderHistory();renderTickets();renderReservations();renderReceipts();renderIntakes();renderMenus();renderSummary();renderDashboard()}
-async function syncCloud(){if(!settings.apiUrl){$("setupPanel").classList.remove("hidden");toast("同期URLを設定してください");return}$("syncStatus").textContent="同期中";try{const res=await fetch(settings.apiUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"sync",apiKey:settings.apiKey,state})});const data=await res.json();if(!data.ok)throw new Error(data.error||"sync error");state=data.state;saveState();renderAll();$("syncStatus").textContent="同期済";toast("同期しました")}catch(e){console.error(e);$("syncStatus").textContent="同期失敗";toast("同期に失敗しました")}}
+function hasUserData(s){
+  if(!s) return false;
+  return ["patients","sales","visitNotes","reservations","receipts","intakes"].some(k => Array.isArray(s[k]) && s[k].length > 0);
+}
+
+async function syncCloud(){
+  if(!settings.apiUrl){
+    $("setupPanel").classList.remove("hidden");
+    toast("同期URLを設定してください");
+    return;
+  }
+
+  const localBeforeSync = JSON.parse(JSON.stringify(state));
+  $("syncStatus").textContent = "同期中";
+
+  try{
+    const loadRes = await fetch(settings.apiUrl,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action:"load",apiKey:settings.apiKey})
+    });
+
+    const loaded = await loadRes.json();
+    if(!loaded.ok) throw new Error(loaded.error || "load error");
+
+    const cloudState = loaded.state;
+    const localHasData = hasUserData(localBeforeSync);
+    const cloudHasData = hasUserData(cloudState);
+
+    let nextState;
+
+    if(localHasData && !cloudHasData){
+      nextState = localBeforeSync;
+    }else if(!localHasData && cloudHasData){
+      nextState = cloudState;
+    }else if(localHasData && cloudHasData){
+      const localTime = new Date(localBeforeSync.updatedAt || 0).getTime();
+      const cloudTime = new Date(cloudState.updatedAt || 0).getTime();
+      nextState = cloudTime > localTime ? cloudState : localBeforeSync;
+    }else{
+      nextState = localBeforeSync;
+    }
+
+    nextState.updatedAt = new Date().toISOString();
+
+    const saveRes = await fetch(settings.apiUrl,{
+      method:"POST",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action:"save",apiKey:settings.apiKey,state:nextState})
+    });
+
+    const saved = await saveRes.json();
+    if(!saved.ok) throw new Error(saved.error || "save error");
+
+    state = nextState;
+    saveState();
+    renderAll();
+
+    $("syncStatus").textContent = "同期済";
+    toast("同期しました");
+  }catch(e){
+    console.error(e);
+    state = localBeforeSync;
+    saveState();
+    renderAll();
+    $("syncStatus").textContent = "同期失敗";
+    toast("同期に失敗しました");
+  }
+}
+
 function restoreBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);if(!data.patients||!data.sales)throw new Error("invalid");state=data;saveState();renderAll();toast("復元しました")}catch{toast("復元できませんでした")}};r.readAsText(f)}
 function registerSW(){if("serviceWorker"in navigator)navigator.serviceWorker.register("service-worker.js").catch(console.error)}
