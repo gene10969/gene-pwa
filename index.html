@@ -52,6 +52,10 @@
       <button class="tab" data-tab="receipts">レシート</button>
       <button class="tab" data-tab="intake">問診</button>
       <button class="tab" data-tab="summary">集計</button>
+      <button class="tab" data-tab="calendar">予約カレンダー</button>
+      <button class="tab" data-tab="chartPanel">統計グラフ</button>
+      <button class="tab" data-tab="chartImages">カルテ画像</button>
+      <button class="tab" data-tab="lineNotify">LINE通知</button>
       <button class="tab" data-tab="masters">設定</button>
     </nav>
 
@@ -182,6 +186,82 @@
         <div class="table-card"><h3>日別集計</h3><div class="table-wrap"><table id="dailyTable"><thead><tr><th>日付</th><th>総売上</th><th>現金</th><th>カード</th><th>オンライン</th><th>回数券販売</th><th>回数券使用</th></tr></thead><tbody></tbody></table></div></div>
       </section>
 
+
+      <section id="calendar" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>予約カレンダー</h2>
+            <p>予約メモを月間カレンダー形式で確認できます。</p>
+          </div>
+          <div class="row-actions">
+            <button id="calPrevBtn" class="btn ghost" type="button">前月</button>
+            <strong id="calendarTitle" class="calendar-title">----</strong>
+            <button id="calNextBtn" class="btn ghost" type="button">翌月</button>
+          </div>
+        </div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+
+      <section id="chartPanel" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>統計グラフ</h2>
+            <p>売上・来院数を月別に可視化します。</p>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <h3>月別売上</h3>
+            <canvas id="monthlySalesCanvas" width="720" height="360"></canvas>
+          </div>
+          <div class="card">
+            <h3>月別来院数</h3>
+            <canvas id="monthlyVisitsCanvas" width="720" height="360"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <section id="chartImages" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>カルテ画像保存</h2>
+            <p>患者No.に画像を紐づけて保存できます。症状写真・姿勢写真・メモ画像などに使えます。</p>
+          </div>
+        </div>
+        <form id="chartImageForm" class="card form-grid">
+          <label>日付<input id="chartImageDate" type="date"></label>
+          <label>患者No.<input id="chartImagePatientNo" list="patientNoList4" inputmode="numeric"></label>
+          <datalist id="patientNoList4"></datalist>
+          <label>分類<input id="chartImageCategory" placeholder="姿勢・皮膚・メモ・その他"></label>
+          <label>画像<input id="chartImageFile" type="file" accept="image/*" capture="environment"></label>
+          <label class="wide">メモ<input id="chartImageNote" placeholder="画像に関する補足"></label>
+          <div class="form-actions">
+            <button class="btn primary" type="submit">カルテ画像を保存</button>
+          </div>
+        </form>
+        <div id="chartImageGallery" class="gallery"></div>
+      </section>
+
+      <section id="lineNotify" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>LINE通知</h2>
+            <p>Apps Script側にLINE送信用設定を入れると、予約メモなどをLINEへ送信できます。</p>
+          </div>
+        </div>
+        <form id="lineNotifyForm" class="card form-grid">
+          <label>通知タイトル<input id="lineTitle" placeholder="gene通知"></label>
+          <label class="wide">通知本文<textarea id="lineMessage" placeholder="通知したい内容"></textarea></label>
+          <div class="form-actions">
+            <button class="btn primary" type="submit">LINE通知を送信</button>
+          </div>
+        </form>
+        <div class="card">
+          <h3>注意</h3>
+          <p class="muted">LINE公式アカウントのMessaging APIを使う場合、チャネルアクセストークンと送信先IDをApps Scriptに設定します。ブラウザ側にはトークンを保存しません。</p>
+        </div>
+      </section>
+
       <section id="masters" class="panel">
         <div class="section-head"><div><h2>料金マスタ・アプリ設定</h2><p>施術メニュー、回数券、同期設定を管理します。</p></div></div>
         <form id="menuForm" class="card form-grid">
@@ -191,6 +271,12 @@
           <div class="form-actions"><button class="btn primary" type="submit">メニュー保存</button></div>
         </form>
         <div class="table-card"><div class="table-wrap"><table id="menusTable"><thead><tr><th>メニュー</th><th>料金</th><th>回数券回数</th><th></th></tr></thead><tbody></tbody></table></div></div>
+      
+        <div class="card">
+          <h3>freee連携設定</h3>
+          <p class="muted">現時点ではfreee取込用CSVを安全に自動生成します。freee APIへの完全自動送信はOAuth認証が必要なため、別途freeeアプリ登録が必要です。</p>
+          <button id="freeeAutoCsvBtn" class="btn primary" type="button">freee用CSVを自動作成</button>
+        </div>
       </section>
     </main>
   </div>

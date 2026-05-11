@@ -10,7 +10,7 @@ const defaultState = {
     {name:"回数券販売 10回", price:45000, ticketCount:10},
     {name:"回数券使用", price:0, ticketCount:0}
   ],
-  sales: [], visitNotes: [], reservations: [], receipts: [], intakes: [],
+  sales: [], visitNotes: [], reservations: [], receipts: [], intakes: [], chartImages: [], lineLogs: [], appSettings: {},
   updatedAt: new Date().toISOString()
 };
 let state = loadState();
@@ -148,12 +148,20 @@ function setScrollDateValue(id, value){
 }
 
 
+
+function migrateState(){
+  if(!Array.isArray(state.chartImages)) state.chartImages = [];
+  if(!Array.isArray(state.lineLogs)) state.lineLogs = [];
+  if(!state.appSettings) state.appSettings = {};
+  saveState();
+}
+
 document.addEventListener("DOMContentLoaded",init);
 function init(){
   $("apiUrlInput").value=settings.apiUrl||"";$("apiKeyInput").value=settings.apiKey||"";$("setupPanel").classList.toggle("hidden",!!settings.apiUrl);
-  ["saleDate","visitDate","reservationDate","receiptDate","intakeDate","firstVisit"].forEach(id=>{ if($(id) && !$(id).value) $(id).value=today(); });
+  ["saleDate","visitDate","reservationDate","receiptDate","intakeDate","firstVisit","chartImageDate"].forEach(id=>{ if($(id) && !$(id).value) $(id).value=today(); });
   setupScrollDateSelectors();
-  bindEvents();renderAll();registerSW();
+  migrateState();bindEvents();renderAll();registerSW();
 }
 function bindEvents(){
   document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>switchTab(b.dataset.tab)));
@@ -171,11 +179,18 @@ function bindEvents(){
   $("salesCsvBtn").addEventListener("click",()=>download("gene_sales.csv",toCsv(state.sales,["date","patientNo","patientName","menu","type","amount","cashReceived","changeDue","cardAmount","onlineAmount","ticketSaleAmount","ticketUsed","note"]),"text/csv"));
   $("dailyCsvBtn").addEventListener("click",()=>download("gene_daily_summary.csv",toCsv(dailyRows(),["date","total","cash","card","online","ticketSale","ticketUsed"]),"text/csv"));
   $("freeeCsvBtn").addEventListener("click",exportFreeeCsv);
+
+  $("calPrevBtn")?.addEventListener("click",()=>{calendarCursor.setMonth(calendarCursor.getMonth()-1);renderCalendar();});
+  $("calNextBtn")?.addEventListener("click",()=>{calendarCursor.setMonth(calendarCursor.getMonth()+1);renderCalendar();});
+  $("chartImageForm")?.addEventListener("submit",saveChartImage);
+  $("lineNotifyForm")?.addEventListener("submit",sendLineNotify);
+  $("freeeAutoCsvBtn")?.addEventListener("click",exportFreeeCsv);
+
   window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();deferredPrompt=e;$("installBtn").classList.remove("hidden")});
   $("installBtn").addEventListener("click",async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$("installBtn").classList.add("hidden")});
 }
 function switchTab(tab){document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===tab));if(tab==="history")renderHistory()}
-function refreshDatalists(){["patientNoList","patientNoList2","patientNoList3"].forEach(id=>{const dl=$(id);dl.innerHTML="";state.patients.forEach(p=>{const o=document.createElement("option");o.value=p.no;o.label=p.name;dl.appendChild(o)})})}
+function refreshDatalists(){["patientNoList","patientNoList2","patientNoList3","patientNoList4"].forEach(id=>{const dl=$(id);dl.innerHTML="";state.patients.forEach(p=>{const o=document.createElement("option");o.value=p.no;o.label=p.name;dl.appendChild(o)})})}
 function refreshMenuSelect(){const s=$("saleMenu");s.innerHTML="";state.menus.forEach(m=>{const o=document.createElement("option");o.value=m.name;o.textContent=`${m.name}（${yen(m.price)}）`;s.appendChild(o)})}
 function applyMenuPrice(){const m=state.menus.find(x=>x.name===$("saleMenu").value);if(!m)return;$("saleAmount").value=m.price;if(m.ticketCount>0){$("saleType").value="回数券販売";$("ticketSaleAmount").value=m.price}else if(m.name.includes("回数券使用")){$("saleType").value="回数券使用";$("saleAmount").value=0;$("ticketUsed").value=1}applyPaymentDefaults()}
 function applyPaymentDefaults(){const a=num($("saleAmount").value),t=$("saleType").value;if(t==="現金"){$("cardAmount").value="";$("onlineAmount").value="";$("ticketSaleAmount").value=""}if(t==="カード"){$("cardAmount").value=a;$("cashReceived").value="";$("onlineAmount").value=""}if(t==="オンライン"){$("onlineAmount").value=a;$("cashReceived").value="";$("cardAmount").value=""}if(t==="回数券販売")$("ticketSaleAmount").value=a;if(t==="回数券使用"){$("saleAmount").value=0;$("ticketUsed").value=$("ticketUsed").value||1}calcChange()}
@@ -210,10 +225,163 @@ function exportFreeeCsv(){const rows=state.sales.map(s=>({date:s.date,account:"�
 window.deleteItem=function(c,id){if(!confirm("削除しますか？"))return;state[c]=state[c].filter(x=>x.id!==id);saveState();renderAll()}
 window.deletePatient=function(no){if(!confirm("患者を削除しますか？売上履歴は残ります。"))return;state.patients=state.patients.filter(p=>String(p.no)!==String(no));saveState();renderAll()}
 window.deleteMenu=function(name){if(!confirm("メニューを削除しますか？"))return;state.menus=state.menus.filter(m=>m.name!==name);saveState();renderAll()}
-function renderAll(){refreshDatalists();refreshMenuSelect();refreshHistorySelect();renderSales();renderPatients();renderHistory();renderTickets();renderReservations();renderReceipts();renderIntakes();renderMenus();renderSummary();renderDashboard()}
+
+let calendarCursor = new Date();
+
+function renderCalendar(){
+  const grid = $("calendarGrid");
+  const title = $("calendarTitle");
+  if(!grid || !title) return;
+
+  const y = calendarCursor.getFullYear();
+  const m = calendarCursor.getMonth();
+  title.textContent = `${y}年 ${m+1}月`;
+  grid.innerHTML = "";
+
+  ["日","月","火","水","木","金","土"].forEach(w=>{
+    const h = document.createElement("div");
+    h.className = "calendar-week";
+    h.textContent = w;
+    grid.appendChild(h);
+  });
+
+  const first = new Date(y,m,1);
+  const start = first.getDay();
+  const max = new Date(y,m+1,0).getDate();
+
+  for(let i=0;i<start;i++){
+    const empty = document.createElement("div");
+    empty.className = "calendar-cell empty";
+    grid.appendChild(empty);
+  }
+
+  for(let d=1; d<=max; d++){
+    const date = `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const cell = document.createElement("div");
+    cell.className = "calendar-cell";
+    const dayReservations = state.reservations.filter(r=>r.date===date).sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+    cell.innerHTML = `<strong>${d}</strong>` + dayReservations.map(r=>`<div class="calendar-item">${esc(r.time||"")} ${esc(r.patientName||r.patientNo||"")}<br>${esc(r.note||r.type)}</div>`).join("");
+    grid.appendChild(cell);
+  }
+}
+
+function monthlyRows(){
+  const map = new Map();
+  state.sales.forEach(s=>{
+    if(!s.date) return;
+    const ym = s.date.slice(0,7);
+    const row = map.get(ym) || {month:ym, sales:0, visits:0};
+    row.sales += num(s.amount);
+    row.visits += 1;
+    map.set(ym,row);
+  });
+  return [...map.values()].sort((a,b)=>a.month.localeCompare(b.month)).slice(-12);
+}
+
+function drawBarChart(canvasId, labels, values, formatter){
+  const canvas = $(canvasId);
+  if(!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = "#101010";
+  ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle = "rgba(217,193,126,.35)";
+  ctx.strokeRect(0,0,w,h);
+
+  const max = Math.max(...values, 1);
+  const pad = 46;
+  const barW = (w - pad*2) / Math.max(values.length,1) * .62;
+  const gap = (w - pad*2) / Math.max(values.length,1);
+
+  ctx.fillStyle = "#d9c17e";
+  ctx.font = "16px Yu Gothic";
+  values.forEach((v,i)=>{
+    const x = pad + i*gap + (gap-barW)/2;
+    const bh = (h-pad*2) * (v/max);
+    const y = h-pad-bh;
+    ctx.fillRect(x,y,barW,bh);
+    ctx.fillStyle = "#f7f0dc";
+    ctx.textAlign = "center";
+    ctx.fillText(labels[i].slice(5), x+barW/2, h-16);
+    ctx.fillText(formatter(v), x+barW/2, Math.max(20,y-8));
+    ctx.fillStyle = "#d9c17e";
+  });
+}
+
+function renderCharts(){
+  const rows = monthlyRows();
+  drawBarChart("monthlySalesCanvas", rows.map(r=>r.month), rows.map(r=>r.sales), yen);
+  drawBarChart("monthlyVisitsCanvas", rows.map(r=>r.month), rows.map(r=>r.visits), v=>`${v}回`);
+}
+
+function saveChartImage(e){
+  e.preventDefault();
+  const file = $("chartImageFile").files[0];
+  if(!file){ toast("画像を選択してください"); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const no = $("chartImagePatientNo").value.trim();
+    state.chartImages.push({
+      id: uid(),
+      date: $("chartImageDate").value,
+      patientNo: no,
+      patientName: patientName(no),
+      category: $("chartImageCategory").value.trim(),
+      imageData: reader.result,
+      note: $("chartImageNote").value.trim()
+    });
+    saveState();
+    renderAll();
+    $("chartImageForm").reset();
+    setScrollDateValue("chartImageDate", today());
+    toast("カルテ画像を保存しました");
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderChartImages(){
+  const box = $("chartImageGallery");
+  if(!box) return;
+  box.innerHTML = "";
+  state.chartImages.slice().sort((a,b)=>b.date.localeCompare(a.date)).forEach(img=>{
+    const div = document.createElement("div");
+    div.className = "card receipt-card";
+    div.innerHTML = `<img src="${img.imageData}" alt=""><h3>${esc(img.patientName||img.patientNo||"未指定")}</h3><p class="muted">${esc(img.date)} / ${esc(img.category)}</p><p>${esc(img.note)}</p><button class="danger" onclick="deleteItem('chartImages','${img.id}')">削除</button>`;
+    box.appendChild(div);
+  });
+}
+
+async function sendLineNotify(e){
+  e.preventDefault();
+  if(!settings.apiUrl){ $("setupPanel").classList.remove("hidden"); toast("同期URLを設定してください"); return; }
+  const payload = {
+    action:"linePush",
+    apiKey:settings.apiKey,
+    title:$("lineTitle").value.trim() || "gene通知",
+    message:$("lineMessage").value.trim()
+  };
+  if(!payload.message){ toast("通知本文を入力してください"); return; }
+  try{
+    const res = await fetch(settings.apiUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error || "line error");
+    state.lineLogs.push({id:uid(),date:new Date().toISOString(),title:payload.title,message:payload.message});
+    saveState();
+    renderAll();
+    $("lineNotifyForm").reset();
+    toast("LINE通知を送信しました");
+  }catch(err){
+    console.error(err);
+    toast("LINE通知に失敗しました");
+  }
+}
+
+
+function renderAll(){refreshDatalists();refreshMenuSelect();refreshHistorySelect();renderSales();renderPatients();renderHistory();renderTickets();renderReservations();renderReceipts();renderIntakes();renderMenus();renderSummary();renderDashboard();renderCalendar();renderCharts();renderChartImages()}
 function hasUserData(s){
   if(!s) return false;
-  return ["patients","sales","visitNotes","reservations","receipts","intakes"].some(k => Array.isArray(s[k]) && s[k].length > 0);
+  return ["patients","sales","visitNotes","reservations","receipts","intakes","chartImages","lineLogs"].some(k => Array.isArray(s[k]) && s[k].length > 0);
 }
 
 async function syncCloud(){
